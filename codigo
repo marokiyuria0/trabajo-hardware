@@ -1,10 +1,20 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <pthread.h>
+#include <semaphore.h>
 
 int grafo [30][30];
 int nodosarecorrer[5];
 int nodoinicial;
+
+
+typedef struct {
+   int nodoA; //nodo donde uno se encuentra
+   int rutasNodo[30]; // rutas maximas que se pueden tomar
+   int largoR; // cuantos nodos pase
+   int visitado[5]; // cuantos  nodos validos tengo
+} ruta;
 
 
 void lee_grafo()
@@ -51,6 +61,10 @@ void lee_grafo()
   }
  }
 
+
+
+
+
 void imprime_grafo()
 {
    int i, j;
@@ -63,6 +77,24 @@ void imprime_grafo()
    }
 }
 
+
+int validarObjetivo(int nodoActual){// si es 1 es valido y si es 0 es invalido 
+}
+
+void objetivoMarca(int numNodo, ruta *rutaVisitada){ //para marcar un nodo visitado
+}
+
+void rutaOptima(ruta *lista){ //ruta que se tomara en cuenta
+
+} 
+
+int nodosCOmpletados(ruta *lista){ //validar que se hayan validado los 5
+
+}
+ 
+
+int validarCamino (ruta *lista){ // validar que el nodo se conecte con el siguiente 
+}
 
 
 
