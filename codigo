@@ -169,6 +169,8 @@ void recorridoGrafo(ruta *rutaActual){
         return NULL;
     }
 
+    rutaActual->rutasNodo[rutaActual->cantidadPasosR] = rutaActual->nodoA; 
+     
     
     if (validadorObjetivosCompletados(rutaActual) == 1){ // si ya se tienen todos los objetivos completos, se guarda la ruta encontrada
         sem_wait(&mutex); // se espera a que el mutex este disponible para guardar la ruta encontrada
@@ -186,10 +188,12 @@ void recorridoGrafo(ruta *rutaActual){
             rutaNueva = malloc(sizeof(ruta));
             rutaNueva->nodoA = i + 1; // se suma +1 porque el grafo empieza en 0 y los nodos empiezan en 1
             rutaNueva->cantidadPasosR = rutaActual->cantidadPasosR + 1; // se incrementa la cantidad de pasos en 1
-            pthread_create(&hilos[contadorDeHilos], NULL, (void *)recorridoGrafo,rutaNueva); // se crea un nuevo hilo para recorrer el grafo con la nueva ruta
-            contadorDeHilos++;
+            pthread_t hiloNuevo;
+            pthread_create(&hiloNuevo, NULL, (void *)recorridoGrafo,rutaNueva); // se crea un nuevo hilo para recorrer el grafo con la nueva ruta
+            pthread_detach(hiloNuevo); // se libera el hilo para volverlo a usar despues
         }
     }
+    sem_post(&semaforo); // se libera el semaforo para el siguiente hilo que quiera recorrer el grafo
 }
 
 
@@ -209,8 +213,7 @@ void recorridoGrafo(ruta *rutaActual){
 
 int main()
 {
-    pthread_t hilos[40]; // arreglo de hilos para cada nodo
-    int contadorDeHilos = 0; // contador para saber cuantos hilos se han creado
+    pthread_t hiloPrincipal; 
     int i, j;
 
     lee_grafo();	
@@ -226,12 +229,10 @@ int main()
     rutaInicial->nodoA = nodoinicial;
     rutaInicial->cantidadPasosR = 0;
     sem_wait(&semaforo); // se espera a que el semaforo este disponible para guardar la ruta optima
-    pthread_create(&hilos[contadorDeHilos], NULL, (void *)recorridoGrafo,rutaInicial); // se crea el hilo inicial con la ruta inicial
-    contadorDeHilos++;
+    pthread_create(&hiloPrincipal, NULL, (void *)recorridoGrafo,rutaInicial); // se crea el hilo inicial con la ruta inicial
 
-    for (j = 0; j < contadorDeHilos; j++){
-        pthread_join(hilos[j], NULL); // se espera a que todos los hilos terminen
-    }
+    
+    pthread_join(&hiloPrincipal, NULL); // se espera a que el hilo principal termine       
 
 
 
