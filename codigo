@@ -4,6 +4,14 @@
 #include <pthread.h>
 #include <semaphore.h>
 
+
+typedef struct {
+   int nodoA; //nodo donde uno se encuentra
+   int rutasNodo[30]; // rutas maximas que se pueden tomar
+   int cantidadPasosR; // cuantos nodos pase
+   int visitado[5]; // cuantos  nodos validos tengo, si es 1 es que fue visitado y si es 0 es que no fue visitado
+} ruta;
+
 ruta rutasEncontradas[30]; // arreglo donde se guardaran las rutas encontradas para la solucion
 int rutasEncontradasParaSolucion = 0; // contador para rutas que se han encontrado 
 int grafo [30][30];
@@ -13,12 +21,6 @@ sem_t semaforo; // semaforo para controlar el acceso a la ruta optima
 sem_t mutex; // para controlar el acceso a las rutas 
 
 
-typedef struct {
-   int nodoA; //nodo donde uno se encuentra
-   int rutasNodo[30]; // rutas maximas que se pueden tomar
-   int cantidadPasosR; // cuantos nodos pase
-   int visitado[5]; // cuantos  nodos validos tengo, si es 1 es que fue visitado y si es 0 es que no fue visitado
-} ruta;
 
 
 void lee_grafo()
@@ -154,6 +156,43 @@ int validadorObjetivosCompletados(ruta *lista){ // validar que el nodo a llegar 
     }
     return 1; // si se retorna 1 es porque ya se tienen todos los objetivos completos
 }
+
+void imprimirRuta(ruta *r)
+{
+    int i;
+
+    for (i = 0; i <= r->cantidadPasosR; i++)
+    {
+        if (i > 0)
+        {
+            printf(" -> ");
+        }
+
+        printf("%d", r->rutasNodo[i]);
+    }
+
+    printf(" | pasos: %d\n", r->cantidadPasosR);
+}
+
+
+
+void imprimirTodasLasRutas()
+{
+    int i;
+
+    printf("\n----- TODAS LAS RUTAS ENCONTRADAS -----\n");
+
+    for (i = 0; i < rutasEncontradasParaSolucion; i++)
+    {
+        printf("\nRuta %d: ", i + 1);
+
+        imprimirRuta(&rutasEncontradas[i]);
+    }
+}
+
+
+
+
 //---------------------------------------------------------------
 
 
@@ -166,7 +205,7 @@ int validadorObjetivosCompletados(ruta *lista){ // validar que el nodo a llegar 
 void recorridoGrafo(ruta *rutaActual){
     int i = 0;
     if(rutaActual == NULL){
-        return NULL;
+        return ;
     }
 
     rutaActual->rutasNodo[rutaActual->cantidadPasosR] = rutaActual->nodoA; 
@@ -182,11 +221,11 @@ void recorridoGrafo(ruta *rutaActual){
     }
 
     for (i = 0; i < 30; i ++){
-        if (grafo[rutaActual->nodoA - 1][i] == 1){
+        if (grafo[rutaActual->nodoA - 1][i] != -1){
             sem_wait(&semaforo); // se espera a que el semaforo este disponible para guardar la ruta optima
             ruta *rutaNueva;
-            rutaNueva = malloc(sizeof(ruta));
-            rutaNueva->nodoA = i + 1; // se suma +1 porque el grafo empieza en 0 y los nodos empiezan en 1
+            *rutaNueva = *rutaActual;
+            rutaNueva->nodoA = grafo[rutaActual->nodoA - 1][i] ; // se asigna el nodo a donde se va a llegar
             rutaNueva->cantidadPasosR = rutaActual->cantidadPasosR + 1; // se incrementa la cantidad de pasos en 1
             pthread_t hiloNuevo;
             pthread_create(&hiloNuevo, NULL, (void *)recorridoGrafo,rutaNueva); // se crea un nuevo hilo para recorrer el grafo con la nueva ruta
@@ -232,11 +271,13 @@ int main()
     pthread_create(&hiloPrincipal, NULL, (void *)recorridoGrafo,rutaInicial); // se crea el hilo inicial con la ruta inicial
 
     
-    pthread_join(&hiloPrincipal, NULL); // se espera a que el hilo principal termine       
+    pthread_join(hiloPrincipal, NULL); // se espera a que el hilo principal termine       
 
 
 
     imprime_grafo();
+
+    imprimirTodasLasRutas();
 
     return 0;
 }
