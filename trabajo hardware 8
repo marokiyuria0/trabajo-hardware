@@ -1,0 +1,335 @@
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+#include <pthread.h>
+#include <semaphore.h>
+
+
+typedef struct {
+   int nodoA; //nodo donde uno se encuentra
+   int rutasNodo[30]; // rutas maximas que se pueden tomar
+   int cantidadPasosR; // cuantos nodos pase
+   int visitado[5]; // cuantos  nodos validos tengo, si es 1 es que fue visitado y si es 0 es que no fue visitado
+} ruta;
+
+ruta rutasEncontradas[30]; // arreglo donde se guardaran las rutas encontradas para la solucion
+int rutasEncontradasParaSolucion = 0; // contador para rutas que se han encontrado 
+int grafo [30][30];
+int nodosarecorrer[5];
+int nodoinicial;
+int mejorCantidadPasos = 30;
+sem_t semaforo; // semaforo para controlar el acceso a la ruta optima
+sem_t mutex; // para controlar el acceso a las rutas 
+
+
+
+
+void lee_grafo()
+{
+  FILE * arch;
+  char linea  [160], * p, *q;
+  int i=0,j,k;
+
+
+  arch = fopen("grafo.csv","r");
+  while ( fgets(linea,160,arch) != NULL)
+  {
+      if ( i==0) /* lee primera linea = Nodo inicial */
+      {
+	 nodoinicial = atoi(linea);
+	 printf("nodo inicio  = %d \n", nodoinicial);
+         i++;
+       }else
+	{ 
+          linea[strlen(linea)-1]=';';     /* reemplaza el \n por ; para que el strtok tome el ultimo numero */		
+	  if (i == 1)  /* Segunda linea = Nodos a recorrer */
+          {
+	     p = strtok(linea,";");   /* encuento el string anterior a un ; que corresponde al nodo */
+             for(j=0;j<5;j++)	
+	     {	
+		nodosarecorrer[j] = atoi(p);     /* lo almaceno en el vector nodosarecorrer */
+	        printf("%d \n",nodosarecorrer[j]);
+		p = strtok(NULL,";");        /* busco el sigiente ; en el string */
+	     }  
+	     i++; 
+	  } 
+           else   /* Desde tercera linea , por cada nodo  lista  sus enlaces */
+           {  
+	     p = strtok(linea,";");  /* saco el nodo del string */
+             j = atoi(p) - 1;
+	     k = 0;
+             while ((p =strtok(NULL,";")) != NULL)  /* busco cada nodo apuntado que está separado por ; */
+	     {
+		 grafo [j][k++]= atoi(p);    /* en la matriz grafo, dejo cada enlace del nodo */
+	     }
+	     grafo[j][k] = -1;  /* inserto al final de la fila un -1 para indicar que no hay mas enlace */
+	   }
+	}
+  }
+ }
+
+
+
+
+
+void imprime_grafo()
+{
+   int i, j;
+   for (i=0;i<30;i++)
+   {
+      printf("\n nodo %d -> ",i+1);	   
+      for (j=0;grafo[i][j] != -1;j++)
+	  printf(" - %d",grafo[i][j]);    
+
+   }
+}
+
+
+
+//-------------------FUNCIONES AUXILIARES -----------------------------
+
+
+int validarObjetivo(int nodoActual){// si es 1 es valido y si es 0 es invalido 
+    int i =0;
+    for (i=0; i<5; i++){
+        if (nodoActual == nodosarecorrer[i]){
+            return i;
+            
+        }
+    }
+    return -1;
+}
+
+void objetivoMarca(int numNodo, ruta *rutaVisitada){ //para marcar un nodo visitado
+    int posicion = 0;
+
+    posicion = validarObjetivo(numNodo);
+    if (posicion != -1){ // marca el nopdo si es realmente valido o si realmente existe, es -1 porque podria haber un nodo en la posicion 0
+        rutaVisitada->visitado[posicion] = 1; //marco el nodo
+}
+}
+
+
+
+
+int validarCamino (ruta *lista, int nodoLlegar){ // validar que el nodo se conecte con el siguiente 
+    int fila = lista->nodoA - 1;
+    int i = 0;
+
+    for ( i=0; grafo[fila][i] != -1; i++){
+        if (grafo[fila][i] == nodoLlegar){
+            return 1;
+        }
+    }
+    return 0;
+}
+
+int validadorObjetivosCompletados(ruta *lista){ // validar que el nodo a llegar sea un nodo objetivo
+    int i = 0;
+    for (i = 0; i < 5; i++){
+        if (0 == lista->visitado[i]){
+            return 0; // si uno es 0, es que aun quedan objetivos que visitar
+            break;
+        }
+    }
+    return 1; // si se retorna 1 es porque ya se tienen todos los objetivos completos
+} // se usa para terminar el recorrido de una si ya se tienen los 5 numeros
+
+
+int yaExisteRutaConPasos(int pasos)
+{
+    int i;
+
+    for (i = 0; i < rutasEncontradasParaSolucion; i++) {
+        if (rutasEncontradas[i].cantidadPasosR == pasos) {
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
+void imprimirRuta(ruta *r)
+{
+    int i;
+
+    for (i = 0; i <= r->cantidadPasosR; i++)
+    {
+        if (i > 0)
+        {
+            printf(" -> ");
+        }
+
+        printf("%d", r->rutasNodo[i]);
+    }
+
+    printf(" | pasos: %d\n", r->cantidadPasosR);
+}
+
+
+
+void imprimirTodasLasRutas()
+{
+    int i;
+
+    printf("\n----- RUTAS ENCONTRADAS -----\n");
+
+    for (i = 0; i < rutasEncontradasParaSolucion; i++)
+    {
+        printf("\nRuta %d: ", i + 1);
+
+        imprimirRuta(&rutasEncontradas[i]);
+    }
+}
+
+void imprimirMejorRuta()
+{
+    int i;
+    int laMejor = 0;
+
+
+    for (i = 1; i < rutasEncontradasParaSolucion; i++) {
+        if (rutasEncontradas[i].cantidadPasosR < rutasEncontradas[laMejor].cantidadPasosR) {
+            laMejor = i;
+        }
+    }
+
+    printf("\nmejor ruta encontrada\n");
+    imprimirRuta(&rutasEncontradas[laMejor]);
+}
+
+
+
+
+//---------------------------------------------------------------
+
+
+
+
+//--------------------RECORRIDOS--------------------------------
+
+
+
+void *recorridoGrafo(void *arreglo)
+{
+    ruta *rutaActual = (ruta *)arreglo;
+    int i = 0;
+    int k;
+    int repetido;
+
+
+
+    rutaActual->rutasNodo[rutaActual->cantidadPasosR] = rutaActual->nodoA;
+    objetivoMarca(rutaActual->nodoA, rutaActual);
+
+    if (validadorObjetivosCompletados(rutaActual) == 1) {
+
+        sem_wait(&mutex);
+
+        if (rutasEncontradasParaSolucion < 30 && yaExisteRutaConPasos(rutaActual->cantidadPasosR) == 0) {
+            rutasEncontradas[rutasEncontradasParaSolucion] = *rutaActual;
+            rutasEncontradasParaSolucion++;
+        }
+
+        if (rutaActual->cantidadPasosR < mejorCantidadPasos) {
+            mejorCantidadPasos = rutaActual->cantidadPasosR;
+        }
+
+        sem_post(&mutex);
+        sem_post(&semaforo);
+
+        return NULL;
+    }
+
+    if (rutaActual->cantidadPasosR >= mejorCantidadPasos) {
+        sem_post(&semaforo);
+        return NULL;
+    }
+
+
+    for (i = 0; i < 30 && grafo[rutaActual->nodoA - 1][i] != -1; i++) {
+
+
+        repetido = 0;
+
+        for (k = 0; k <= rutaActual->cantidadPasosR; k++) {
+            if (rutaActual->rutasNodo[k] == grafo[rutaActual->nodoA - 1][i]) {
+                repetido = 1;
+            }
+        }
+
+        if (rutaActual->cantidadPasosR < mejorCantidadPasos && repetido == 0) {
+
+            ruta *rutaNueva = malloc(sizeof(ruta));
+
+            if (rutaNueva != NULL) {
+                *rutaNueva = *rutaActual;
+
+                rutaNueva->nodoA = grafo[rutaActual->nodoA - 1][i];
+                rutaNueva->cantidadPasosR = rutaActual->cantidadPasosR + 1;
+
+                sem_wait(&semaforo);
+
+                pthread_t hiloNuevo;
+                pthread_create(&hiloNuevo, NULL, recorridoGrafo, rutaNueva); // aca se usa la recursividad con recorridoGrafo
+
+                pthread_join(hiloNuevo, NULL);
+            }
+        }
+    }
+
+    sem_post(&semaforo);
+    return NULL;
+}
+
+
+
+
+
+
+
+
+//-----------------------------------------------------
+
+
+
+int main()
+{
+    pthread_t hiloPrincipal; 
+    int i, j;
+
+    lee_grafo();	
+
+    for (i = 0; i < 30; i++){
+        rutasEncontradas[i].cantidadPasosR = -1;
+    }
+
+    sem_init(&semaforo, 0, 40); // inicializacion del semaforo
+    sem_init(&mutex, 0, 1); // inicializacion del mutex
+
+    ruta *rutaInicial;
+    rutaInicial = malloc(sizeof(ruta));
+
+    rutaInicial->nodoA = nodoinicial;
+    rutaInicial->cantidadPasosR = 0;
+
+    for (i = 0; i < 5; i++){
+        rutaInicial->visitado[i] = 0; // se inicializa el arreglo de visitados en 0, es decir, no se ha visitado ningun nodo objetivo
+    }
+
+    sem_wait(&semaforo); // se espera a que el semaforo este disponible para guardar la ruta optima
+
+    pthread_create(&hiloPrincipal, NULL, recorridoGrafo, rutaInicial);; // se crea el hilo inicial con la ruta inicial
+
+    pthread_join(hiloPrincipal, NULL); // se espera a que el hilo principal termine       
+
+
+
+    imprime_grafo();
+
+    imprimirTodasLasRutas();
+
+    imprimirMejorRuta();
+
+    return 0;
+}
